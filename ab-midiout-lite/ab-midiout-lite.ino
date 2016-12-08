@@ -24,8 +24,6 @@ byte midiData[] = {0, 0, 0};
 byte midiChannels[] = {0, 1, 2, 3};
 byte midiCcNumbers[] = {1, 2, 3, 7, 10, 11, 12};
 int midiOutLastNote[4] = {-1, -1, -1, -1};
-unsigned long midioutNoteTimer[4] = {0, 0, 0, 0};
-int midioutNoteTimerThreshold = 10;
 boolean midiValueMode = false;
 int countClockPause = 0;
 byte incomingMidiByte;
@@ -95,7 +93,6 @@ void playNote(byte m, byte n) {
   midiData[1] = n;
   midiData[2] = 0x7F;
   Serial.write(midiData,3);
-  midioutNoteTimer[m] = millis();
   midiOutLastNote[m] = n;
 }
 
