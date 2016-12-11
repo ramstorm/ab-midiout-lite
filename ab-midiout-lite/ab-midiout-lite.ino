@@ -26,8 +26,12 @@ byte midiData[] = {0, 0, 0};
 byte midiChannels[] = {1, 2, 3, 4};
 byte midiCcNumbers[] = {1, 2, 3, 7, 10, 11, 12};
 int midiOutLastNote[4] = {-1, -1, -1, -1};
+int velocity[4] = {100, 100, 100, 100};
+int chord[4] = {-1, -1, -1, -1};
+byte chords[15][6] = {{3,0,3,7}, {3,0,4,7}, {3,7,12,15}, {3,7,12,16}, {2,0,3}, {2,0,4}, {4,0,3,7,10}, {4,0,4,7,11}, {5,0,3,7,10,14}, {5,0,4,7,11,14}, {3,0,5,7}, {2,0,7}, {3,0,7,12}, {3,2,0,12}, {3,0,12,24}};
 boolean midiValueMode = false;
 int countClockPause = 0;
+int chordIx = 1;
 byte incomingMidiByte;
 
 void setup() {
@@ -87,12 +91,26 @@ void midioutDoAction(byte m, byte v) {
 }
 
 void stopNote(byte m) {
-  MIDI.sendNoteOff(midiOutLastNote[m], 100, midiChannels[m]);
+  if (chord[m] >= 0) {
+    for (chordIx = 1; chordIx <= chords[chord[m]][0]; chordIx++) {
+      MIDI.sendNoteOff(midiOutLastNote[m] + chords[chord[m]][chordIx], 100, midiChannels[m]);
+    }
+  }
+  else {
+    MIDI.sendNoteOff(midiOutLastNote[m], 100, midiChannels[m]);
+  }
   midiOutLastNote[m] = -1;
 }
 
 void playNote(byte m, byte n) {
-  MIDI.sendNoteOn(n, 100, midiChannels[m]);
+  if (chord[m] >= 0) {
+    for (chordIx = 1; chordIx <= chords[chord[m]][0]; chordIx++) {
+      MIDI.sendNoteOn(n + chords[chord[m]][chordIx], velocity[m], midiChannels[m]);
+    }
+  }
+  else {
+    MIDI.sendNoteOn(n, velocity[m], midiChannels[m]);
+  }
   midiOutLastNote[m] = n;
 }
 
@@ -100,7 +118,12 @@ void playCC(byte m, byte n) {
   byte v = n & 0x0F;
   v = v*8 + (v>>1); // CC value will span the whole range 0-127
   n = (n>>4) & 0x07;
-  MIDI.sendControlChange(midiCcNumbers[n], v, midiChannels[m]);
+  if (n == 3)
+    velocity[m] = v;
+  else if (n == 5)
+    chord[m] = v/8 - 1;
+  else
+    MIDI.sendControlChange(midiCcNumbers[n], v, midiChannels[m]);
 }
 
 void stopAllNotes() {
