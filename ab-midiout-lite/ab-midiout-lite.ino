@@ -10,6 +10,7 @@
  *   (at your option) any later version.                                   *
  *                                                                         *
  ***************************************************************************/
+#include <MIDI.h>
 
 #define BYTE_DELAY 80
 #define BIT_DELAY 2
@@ -18,10 +19,11 @@
 #define PIN_GB_SERIALOUT 1
 #define PIN_MIDI_INPUT_POWER 4
 
+MIDI_CREATE_DEFAULT_INSTANCE();
 
 int countGbClockTicks = 0;
 byte midiData[] = {0, 0, 0};
-byte midiChannels[] = {0, 1, 2, 3};
+byte midiChannels[] = {1, 2, 3, 4};
 byte midiCcNumbers[] = {1, 2, 3, 7, 10, 11, 12};
 int midiOutLastNote[4] = {-1, -1, -1, -1};
 boolean midiValueMode = false;
@@ -34,21 +36,22 @@ void setup() {
 
   pinMode(PIN_MIDI_INPUT_POWER, OUTPUT);
   digitalWrite(PIN_MIDI_INPUT_POWER, HIGH); // Turn on the optoisolator
-  Serial.begin(31250); // Not using USB mode
   digitalWrite(PIN_GB_CLOCK, HIGH); // Gameboy wants a HIGH line
   digitalWrite(PIN_GB_SERIALOUT, LOW); // No data to send
+
+  MIDI.begin();
 }
 
 void loop() {
-  if(getIncommingSlaveByte()) {
+  if(getIncomingSlaveByte()) {
     if(incomingMidiByte > 0x6f) {
       switch(incomingMidiByte) {
         case 0x7E: //seq stop
-          Serial.write(0xFC);
+          MIDI.sendRealTime(midi::Stop);
           stopAllNotes();
           break;
         case 0x7D: //seq start
-          Serial.write(0xFA);
+          MIDI.sendRealTime(midi::Start);
           break;
         default:
           midiData[0] = incomingMidiByte - 0x70;
@@ -67,6 +70,9 @@ void midioutDoAction(byte m, byte v) {
   if(m < 4) {
     // Note message
     if(v > 0) {
+      if(midiOutLastNote[m]>=0) {
+        stopNote(m);
+      }
       playNote(m,v);
     }
     else {
@@ -81,18 +87,12 @@ void midioutDoAction(byte m, byte v) {
 }
 
 void stopNote(byte m) {
-  midiData[0] = 0x80 + midiChannels[m];
-  midiData[1] = midiOutLastNote[m];
-  midiData[2] = 0x00;
-  Serial.write(midiData,3);
+  MIDI.sendNoteOff(midiOutLastNote[m], 100, midiChannels[m]);
   midiOutLastNote[m] = -1;
 }
 
 void playNote(byte m, byte n) {
-  midiData[0] = 0x90 + midiChannels[m];
-  midiData[1] = n;
-  midiData[2] = 0x7F;
-  Serial.write(midiData,3);
+  MIDI.sendNoteOn(n, 100, midiChannels[m]);
   midiOutLastNote[m] = n;
 }
 
@@ -100,10 +100,7 @@ void playCC(byte m, byte n) {
   byte v = n & 0x0F;
   v = v*8 + (v>>1); // CC value will span the whole range 0-127
   n = (n>>4) & 0x07;
-  midiData[0] = 0xB0 + midiChannels[m];
-  midiData[1] = midiCcNumbers[n];
-  midiData[2] = v;
-  Serial.write(midiData,3);
+  MIDI.sendControlChange(midiCcNumbers[n], v, midiChannels[m]);
 }
 
 void stopAllNotes() {
@@ -111,14 +108,11 @@ void stopAllNotes() {
     if(midiOutLastNote[m]>=0) {
       stopNote(m);
     }
-    midiData[0] = 0xB0 + midiChannels[m];
-    midiData[1] = 123;
-    midiData[2] = 0x7F;
-    Serial.write(midiData,3);
+    MIDI.sendControlChange(123, 0x7F, midiChannels[m]);
   }
 }
 
-boolean getIncommingSlaveByte() {
+boolean getIncomingSlaveByte() {
   delayMicroseconds(BYTE_DELAY);
   PORTC = B00000000; // Rightmost bit is clock line, 2nd bit is data to gb, 3rd is DATA FROM GB
   delayMicroseconds(BYTE_DELAY);
