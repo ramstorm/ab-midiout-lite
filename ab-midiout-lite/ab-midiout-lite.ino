@@ -21,17 +21,34 @@
 
 MIDI_CREATE_DEFAULT_INSTANCE();
 
-int countGbClockTicks = 0;
-byte midiData[] = {0, 0, 0};
-byte midiChannels[] = {1, 2, 3, 4};
-byte midiCcNumbers[] = {1, 2, 3, 7, 10, 11, 12};
+byte midiChannels[4] = {1, 2, 3, 4};
+byte midiCcNumbers[7] = {1, 2, 3, 7, 10, 11, 12};
 int midiOutLastNote[4] = {-1, -1, -1, -1};
 int velocity[4] = {100, 100, 100, 100};
 int chord[4] = {-1, -1, -1, -1};
-byte chords[15][6] = {{3,0,3,7}, {3,0,4,7}, {3,7,12,15}, {3,7,12,16}, {2,0,3}, {2,0,4}, {4,0,3,7,10}, {4,0,4,7,11}, {5,0,3,7,10,14}, {5,0,4,7,11,14}, {3,0,5,7}, {2,0,7}, {3,0,7,12}, {3,2,0,12}, {3,0,12,24}};
+int chordIx = 1;
+byte chords[15][6] = {
+  {3,0,3,7},
+  {3,0,4,7},
+  {3,7,12,15},
+  {3,7,12,16},
+  {2,0,3},
+  {2,0,4},
+  {4,0,3,7,10},
+  {4,0,4,7,11},
+  {5,0,3,7,10,14},
+  {5,0,4,7,11,14},
+  {3,0,5,7},
+  {2,0,7},
+  {3,0,7,12},
+  {3,2,0,12},
+  {3,0,12,24}
+};
+
+int countGbClockTicks = 0;
+byte midiData = 0;
 boolean midiValueMode = false;
 int countClockPause = 0;
-int chordIx = 1;
 byte incomingMidiByte;
 
 void setup() {
@@ -58,14 +75,14 @@ void loop() {
           MIDI.sendRealTime(midi::Start);
           break;
         default:
-          midiData[0] = incomingMidiByte - 0x70;
+          midiData = incomingMidiByte - 0x70;
           midiValueMode = true;
           break;
       }
     }
     else if (midiValueMode == true) {
       midiValueMode = false;
-      midioutDoAction(midiData[0], incomingMidiByte);
+      midioutDoAction(midiData, incomingMidiByte);
     }
   }
 }
@@ -115,15 +132,26 @@ void playNote(byte m, byte n) {
 }
 
 void playCC(byte m, byte n) {
-  byte v = n & 0x0F;
-  v = v*8 + (v>>1); // CC value will span the whole range 0-127
-  n = (n>>4) & 0x07;
-  if (n == 3)
-    velocity[m] = v;
-  else if (n == 5)
-    chord[m] = v/8 - 1;
-  else
-    MIDI.sendControlChange(midiCcNumbers[n], v, midiChannels[m]);
+  byte v = n & 0x0F; // GB CC value 0-15
+  n = (n>>4) & 0x07; // GB CC number 0-6
+  if (n == 3) {
+    // Set velocity 1-127
+    if (v == 0) {
+      velocity[m] = 1;
+    }
+    else {
+      velocity[m] = v * 8 + (v >> 1);
+    }
+  }
+  else if (n == 5) {
+    chord[m] = v - 1; // Set chord with 1-14, 0 => chord off
+  }
+  else if (n == 6) {
+    midiChannels[m] = v; // Change the current channel 0-15
+  }
+  else {
+    MIDI.sendControlChange(midiCcNumbers[n], v*8 + (v>>1), midiChannels[m]);
+  }
 }
 
 void stopAllNotes() {
@@ -137,7 +165,7 @@ void stopAllNotes() {
 
 boolean getIncomingSlaveByte() {
   delayMicroseconds(BYTE_DELAY);
-  PORTC = B00000000; // Rightmost bit is clock line, 2nd bit is data to gb, 3rd is DATA FROM GB
+  PORTC = B00000000; // Rightmost bit is clock line, 2nd bit is data to gb, 3rd is data from gb
   delayMicroseconds(BYTE_DELAY);
   PORTC = B00000001;
   delayMicroseconds(BIT_DELAY);
