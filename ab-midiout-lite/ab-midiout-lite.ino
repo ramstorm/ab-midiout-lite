@@ -64,9 +64,9 @@ void setup() {
 }
 
 void loop() {
-  if(getIncomingSlaveByte()) {
-    if(incomingMidiByte > 0x6f) {
-      switch(incomingMidiByte) {
+  if (getIncomingSlaveByte()) {
+    if (incomingMidiByte > 0x6f) {
+      switch (incomingMidiByte) {
         case 0x7E: //seq stop
           MIDI.sendRealTime(midi::Stop);
           stopAllNotes();
@@ -88,10 +88,10 @@ void loop() {
 }
 
 void midioutDoAction(byte m, byte v) {
-  if(m < 4) {
+  if (m < 4) {
     // Note message
-    if(v > 0) {
-      if(midiOutLastNote[m]>=0) {
+    if (v > 0) {
+      if (midiOutLastNote[m] >= 0) {
         stopNote(m);
       }
       playNote(m,v);
@@ -101,7 +101,7 @@ void midioutDoAction(byte m, byte v) {
     }
   }
   else if (m < 8) {
-    m-=4;
+    m -= 4;
     // CC message
     playCC(m,v);
   }
@@ -133,7 +133,7 @@ void playNote(byte m, byte n) {
 
 void playCC(byte m, byte n) {
   byte v = n & 0x0F; // GB CC value 0-15
-  n = (n>>4) & 0x07; // GB CC number 0-6
+  n = (n >> 4) & 0x07; // GB CC number 0-6
   if (n == 3) {
     // Set velocity 1-127
     if (v == 0) {
@@ -144,19 +144,19 @@ void playCC(byte m, byte n) {
     }
   }
   else if (n == 5) {
-    chord[m] = v - 1; // Set chord with 1-14, 0 => chord off
+    chord[m] = v - 1; // Set chord with 1-15, 0 => chord off
   }
   else if (n == 6) {
-    midiChannels[m] = v; // Change the current channel 0-15
+    midiChannels[m] = v + 1; // Set the current channel to MIDI ch 1-16
   }
   else {
-    MIDI.sendControlChange(midiCcNumbers[n], v*8 + (v>>1), midiChannels[m]);
+    MIDI.sendControlChange(midiCcNumbers[n], v * 8 + (v >> 1), midiChannels[m]);
   }
 }
 
 void stopAllNotes() {
-  for(int m=0;m<4;m++) {
-    if(midiOutLastNote[m]>=0) {
+  for(int m=0; m < 4; m++) {
+    if(midiOutLastNote[m] >= 0) {
       stopNote(m);
     }
     MIDI.sendControlChange(123, 0x7F, midiChannels[m]);
@@ -169,14 +169,14 @@ boolean getIncomingSlaveByte() {
   delayMicroseconds(BYTE_DELAY);
   PORTC = B00000001;
   delayMicroseconds(BIT_DELAY);
-  if((PINC & B00000100)) {
+  if ((PINC & B00000100)) {
     incomingMidiByte = 0;
-    for(countClockPause=0;countClockPause!=7;countClockPause++) {
+    for (countClockPause = 0; countClockPause != 7; countClockPause++) {
       PORTC = B00000000;
       delayMicroseconds(BIT_DELAY);
       PORTC = B00000001;
       delayMicroseconds(BIT_READ_DELAY);
-      incomingMidiByte = (incomingMidiByte<<1) + ((PINC & B00000100)>>2);
+      incomingMidiByte = (incomingMidiByte << 1) + ((PINC & B00000100) >> 2);
     }
     return true;
   }
