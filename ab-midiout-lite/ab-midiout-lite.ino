@@ -29,7 +29,6 @@ byte midiCcNumbers[7] = {1, 2, 3, 7, 10, 11, 12};
 int midiOutLastNote[4] = {-1, -1, -1, -1};
 int velocity[4] = {100, 100, 100, 100};
 
-long intervalMicroSeconds;
 int bpm = 1280; // BPM in tenths of a BPM
 
 int chord[4] = {-1, -1, -1, -1};
@@ -70,8 +69,7 @@ void setup() {
   MIDI.begin();
 
   // MIDI clock timer interrupt
-  Timer1.initialize(intervalMicroSeconds);
-  Timer1.setPeriod(calculateIntervalMicroSecs(bpm));
+  Timer1.initialize(calculateIntervalMicroSecs(bpm));
   Timer1.attachInterrupt(sendClockPulse);
 }
 
@@ -146,26 +144,28 @@ void playNote(byte m, byte n) {
 void playCC(byte m, byte n) {
   byte v = n & 0x0F; // GB CC value 0-15
   n = (n >> 4) & 0x07; // GB CC number 0-6
-  if (n == 3) {
-    // Set velocity 1-127
-    if (v == 0) {
-      velocity[m] = 1;
-    }
-    else {
-      velocity[m] = v * 8 + (v >> 1);
-    }
-  }
-  else if (n == 4) {
-    Timer1.setPeriod(calculateIntervalMicroSecs(MIN_BPM + v * 80));
-  }
-  else if (n == 5) {
-    chord[m] = v - 1; // Set chord with 1-15, 0 => chord off
-  }
-  else if (n == 6) {
-    midiChannels[m] = v + 1; // Set the current channel to MIDI ch 1-16
-  }
-  else {
-    MIDI.sendControlChange(midiCcNumbers[n], v * 8 + (v >> 1), midiChannels[m]);
+  switch (n) {
+    case 3: // Set velocity 1-127
+      if (v == 0) {
+        velocity[m] = 1;
+      }
+      else {
+        velocity[m] = v * 8 + (v >> 1);
+      }
+      break;
+    case 4: // Set clock interval
+      Timer1.setPeriod(calculateIntervalMicroSecs(MIN_BPM + v * 80));
+      Timer1.restart();
+      break;
+    case 5: // Set chord with 1-15, 0 => chord off
+      chord[m] = v - 1;
+      break;
+    case 6: // Set the current channel to MIDI ch 1-16
+      midiChannels[m] = v + 1;
+      break;
+    default: // Send CC
+      MIDI.sendControlChange(midiCcNumbers[n], v * 8 + (v >> 1), midiChannels[m]);
+      break;
   }
 }
 
