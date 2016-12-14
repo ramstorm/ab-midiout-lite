@@ -11,6 +11,7 @@
  *                                                                         *
  ***************************************************************************/
 #include <MIDI.h>
+#include <TimerOne.h>
 
 #define BYTE_DELAY 80
 #define BIT_DELAY 2
@@ -18,6 +19,8 @@
 #define PIN_GB_CLOCK 0
 #define PIN_GB_SERIALOUT 1
 #define PIN_MIDI_INPUT_POWER 4
+#define CLOCKS_PER_BEAT 24
+#define MIN_BPM 800
 
 MIDI_CREATE_DEFAULT_INSTANCE();
 
@@ -25,6 +28,10 @@ byte midiChannels[4] = {1, 2, 3, 4};
 byte midiCcNumbers[7] = {1, 2, 3, 7, 10, 11, 12};
 int midiOutLastNote[4] = {-1, -1, -1, -1};
 int velocity[4] = {100, 100, 100, 100};
+
+long intervalMicroSeconds;
+int bpm = 1280; // BPM in tenths of a BPM
+
 int chord[4] = {-1, -1, -1, -1};
 int chordIx = 1;
 byte chords[15][6] = {
@@ -61,6 +68,11 @@ void setup() {
   digitalWrite(PIN_GB_SERIALOUT, LOW); // No data to send
 
   MIDI.begin();
+
+  // MIDI clock timer interrupt
+  Timer1.initialize(intervalMicroSeconds);
+  Timer1.setPeriod(calculateIntervalMicroSecs(bpm));
+  Timer1.attachInterrupt(sendClockPulse);
 }
 
 void loop() {
@@ -143,6 +155,9 @@ void playCC(byte m, byte n) {
       velocity[m] = v * 8 + (v >> 1);
     }
   }
+  else if (n == 4) {
+    Timer1.setPeriod(calculateIntervalMicroSecs(MIN_BPM + v * 80));
+  }
   else if (n == 5) {
     chord[m] = v - 1; // Set chord with 1-15, 0 => chord off
   }
@@ -161,6 +176,14 @@ void stopAllNotes() {
     }
     MIDI.sendControlChange(123, 0x7F, midiChannels[m]);
   }
+}
+
+long calculateIntervalMicroSecs(int bpm) {
+  return 60L * 1000 * 1000 * 10 / bpm / CLOCKS_PER_BEAT;
+}
+
+void sendClockPulse() {
+  MIDI.sendRealTime(midi::Clock);
 }
 
 boolean getIncomingSlaveByte() {
