@@ -20,7 +20,8 @@
 #define PIN_GB_SERIALOUT 1
 #define PIN_MIDI_INPUT_POWER 4
 #define CLOCKS_PER_BEAT 24
-#define MIN_BPM 800
+#define MIN_BPM 80
+#define MAX_BPM 200
 
 MIDI_CREATE_DEFAULT_INSTANCE();
 
@@ -28,8 +29,13 @@ byte midiChannels[4] = {1, 2, 3, 4};
 byte midiCcNumbers[7] = {1, 2, 3, 7, 10, 11, 12};
 int midiOutLastNote[4] = {-1, -1, -1, -1};
 int velocity[4] = {100, 100, 100, 100};
-
-int bpm = 1280; // BPM in tenths of a BPM
+int bpm = 128;
+long minTapInterval = 60L * 1000 * 1000 / MAX_BPM;
+long maxTapInterval = 60L * 1000 * 1000 / MIN_BPM;
+long firstTapTime = 0;
+long lastTapTime = 0;
+long timesTapped = 1;
+long now = 0;
 
 int chord[4] = {-1, -1, -1, -1};
 int chordIx = 1;
@@ -69,7 +75,7 @@ void setup() {
   MIDI.begin();
 
   // MIDI clock timer interrupt
-  Timer1.initialize(calculateIntervalMicroSecs(bpm));
+  Timer1.initialize(clockIntervalMicros(bpm));
   Timer1.attachInterrupt(sendClockPulse);
 }
 
@@ -82,6 +88,7 @@ void loop() {
           stopAllNotes();
           break;
         case 0x7D: //seq start
+          Timer1.restart();
           MIDI.sendRealTime(midi::Start);
           break;
         default:
@@ -153,9 +160,22 @@ void playCC(byte m, byte n) {
         velocity[m] = v * 8 + (v >> 1);
       }
       break;
-    case 4: // Set clock interval
-      Timer1.setPeriod(calculateIntervalMicroSecs(MIN_BPM + v * 80));
-      Timer1.restart();
+    case 4: // Set clock interval using CC value or tap tempo
+      now = micros();
+      if (now - lastTapTime < minTapInterval) {
+        return;
+      }
+
+      if (now - lastTapTime > maxTapInterval) {
+        Timer1.setPeriod(clockIntervalMicros(MIN_BPM + v * 8));
+        firstTapTime = now;
+        timesTapped = 1;
+      }
+      else {
+        Timer1.setPeriod((now - firstTapTime) / timesTapped / CLOCKS_PER_BEAT);
+        timesTapped++;
+      }
+      lastTapTime = now;
       break;
     case 5: // Set chord with 1-15, 0 => chord off
       chord[m] = v - 1;
@@ -178,8 +198,8 @@ void stopAllNotes() {
   }
 }
 
-long calculateIntervalMicroSecs(int bpm) {
-  return 60L * 1000 * 1000 * 10 / bpm / CLOCKS_PER_BEAT;
+long clockIntervalMicros(int bpm) {
+  return 60L * 1000 * 1000 / bpm / CLOCKS_PER_BEAT;
 }
 
 void sendClockPulse() {
