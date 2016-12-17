@@ -23,7 +23,7 @@
 #define MIN_BPM 80
 #define MAX_BPM 200
 
-// CC numbers used for setting velocity, tempo, chord and channel. Allowed numbers: 0-6 (only these generate a CC message from LSDJ)
+// CC numbers used for setting velocity, tempo, chord and channel. Use numbers 0-6, only these generate a CC message from LSDJ. Use 7 or greater to turn off a function and free up a CC.
 #define VELOCITY_CC 3
 #define TEMPO_CC 4
 #define CHORD_CC 5
@@ -120,7 +120,7 @@ void midioutDoAction(byte m, byte v) {
       if (midiOutLastNote[m] >= 0) {
         stopNote(m);
       }
-      playNote(m,v);
+      playNote(m, v);
     }
     else {
       stopNote(m);
@@ -128,8 +128,11 @@ void midioutDoAction(byte m, byte v) {
   }
   else if (m < 8) {
     m -= 4;
-    // CC message
-    playCC(m,v);
+    playCC(m, v);
+  }
+  else if(m < 0x0C) {
+    m -= 8;
+    playPC(m, v);
   }
 }
 
@@ -196,6 +199,10 @@ void playCC(byte m, byte n) {
       MIDI.sendControlChange(midiCcNumbers[n], v * 8 + (v >> 1), midiChannels[m]);
       break;
   }
+}
+
+void playPC(byte m, byte n) {
+  MIDI.sendProgramChange(n, midiChannels[m]);
 }
 
 void stopAllNotes() {
