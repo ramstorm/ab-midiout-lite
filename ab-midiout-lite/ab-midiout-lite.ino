@@ -23,6 +23,13 @@
 #define MIN_BPM 80
 #define MAX_BPM 200
 
+// CC numbers used for setting velocity, tempo, chord and channel. Allowed numbers: 0-6 (only these generate a CC message from LSDJ)
+#define VELOCITY_CC 3
+#define TEMPO_CC 4
+#define CHORD_CC 5
+#define CHANNEL_CC 6
+
+
 MIDI_CREATE_DEFAULT_INSTANCE();
 
 byte midiChannels[4] = {1, 2, 3, 4};
@@ -39,22 +46,24 @@ long now = 0;
 
 int chord[4] = {-1, -1, -1, -1};
 int chordIx = 1;
+
+// List of chords. First number = chord size, the rest = keys 1, 2, 3 etc. Max chord size = 5 (can be increased).
 byte chords[15][6] = {
-  {3,0,3,7},
-  {3,0,4,7},
-  {3,7,12,15},
-  {3,7,12,16},
-  {2,0,3},
-  {2,0,4},
-  {4,0,3,7,10},
-  {4,0,4,7,11},
-  {5,0,3,7,10,14},
-  {5,0,4,7,11,14},
-  {3,0,5,7},
-  {2,0,7},
-  {3,0,7,12},
-  {3,2,0,12},
-  {3,0,12,24}
+  {3,0,3,7},       // Minor 3 keys
+  {3,0,4,7},       // Major 3 keys
+  {3,7,12,15},     // Minor 3 keys, highest key is an octave below
+  {3,7,12,16},     // Major 3 keys, highest key is an octave below
+  {2,0,3},         // Minor 2 keys
+  {2,0,4},         // Major 2 keys
+  {4,0,3,7,10},    // M7
+  {4,0,4,7,11},    // Maj7
+  {5,0,3,7,10,14}, // M9
+  {5,0,4,7,11,14}, // Maj9
+  {3,0,5,7},       // Sus4
+  {2,0,7},         // Power chord 2 keys
+  {3,0,7,12},      // Power chord 3 keys
+  {2,0,12},        // Octave 2 keys
+  {3,0,12,24}      // Octave 3 keys
 };
 
 int countGbClockTicks = 0;
@@ -152,7 +161,7 @@ void playCC(byte m, byte n) {
   byte v = n & 0x0F; // GB CC value 0-15
   n = (n >> 4) & 0x07; // GB CC number 0-6
   switch (n) {
-    case 3: // Set velocity 1-127
+    case VELOCITY_CC: // Set velocity 1-127
       if (v == 0) {
         velocity[m] = 1;
       }
@@ -160,7 +169,7 @@ void playCC(byte m, byte n) {
         velocity[m] = v * 8 + (v >> 1);
       }
       break;
-    case 4: // Set clock interval using CC value or tap tempo
+    case TEMPO_CC: // Set clock interval using CC value or tap tempo
       now = micros();
       if (now - lastTapTime < minTapInterval) {
         return;
@@ -177,10 +186,10 @@ void playCC(byte m, byte n) {
       }
       lastTapTime = now;
       break;
-    case 5: // Set chord with 1-15, 0 => chord off
+    case CHORD_CC: // Set chord with 1-15, 0 => chord off
       chord[m] = v - 1;
       break;
-    case 6: // Set the current channel to MIDI ch 1-16
+    case CHANNEL_CC: // Set the current channel to MIDI ch 1-16
       midiChannels[m] = v + 1;
       break;
     default: // Send CC
