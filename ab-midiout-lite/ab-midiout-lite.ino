@@ -23,7 +23,8 @@
 #define MIN_BPM 80
 #define MAX_BPM 200
 
-// CC numbers used for setting velocity, tempo, chord and channel. Use numbers 0-6, only these generate a CC message from LSDJ. Use 7 or greater to turn off a function and free up a CC.
+// CC numbers for setting velocity, tempo, chord and channel.
+// Only 0-6 can be used. Set to 7 or greater to turn off a function and free up a CC.
 #define VELOCITY_CC 3
 #define TEMPO_CC 4
 #define CHORD_CC 5
@@ -36,6 +37,7 @@ byte midiChannels[4] = {1, 2, 3, 4};
 byte midiCcNumbers[7] = {1, 2, 3, 7, 10, 11, 12};
 int midiOutLastNote[4] = {-1, -1, -1, -1};
 int velocity[4] = {100, 100, 100, 100};
+boolean clockOn = false;
 int bpm = 128;
 long minTapInterval = 60L * 1000 * 1000 / MAX_BPM;
 long maxTapInterval = 60L * 1000 * 1000 / MIN_BPM;
@@ -47,7 +49,7 @@ long now = 0;
 int chord[4] = {-1, -1, -1, -1};
 int chordIx = 1;
 
-// List of chords. First number = chord size, the rest = keys 1, 2, 3 etc. Max chord size = 5 (can be increased).
+// List of chords. First number = chord size, the rest = key 1, 2, 3 etc.
 byte chords[15][6] = {
   {3,0,3,7},       // Minor 3 keys
   {3,0,4,7},       // Major 3 keys
@@ -72,6 +74,8 @@ boolean midiValueMode = false;
 int countClockPause = 0;
 byte incomingMidiByte;
 
+volatile byte sendClock = 0;
+
 void setup() {
   DDRC  = B00000011; // Set analog in pins as inputs
   PORTC = B00000001;
@@ -86,6 +90,7 @@ void setup() {
   // MIDI clock timer interrupt
   Timer1.initialize(clockIntervalMicros(bpm));
   Timer1.attachInterrupt(sendClockPulse);
+  Timer1.stop();
 }
 
 void loop() {
@@ -97,7 +102,9 @@ void loop() {
           stopAllNotes();
           break;
         case 0x7D: //seq start
-          Timer1.restart();
+          if (clockOn) {
+            Timer1.restart();
+          }
           MIDI.sendRealTime(midi::Start);
           break;
         default:
@@ -110,6 +117,10 @@ void loop() {
       midiValueMode = false;
       midioutDoAction(midiData, incomingMidiByte);
     }
+  }
+  if (sendClock > 0) {
+    MIDI.sendRealTime(midi::Clock);
+    sendClock = 0;
   }
 }
 
@@ -162,24 +173,30 @@ void playNote(byte m, byte n) {
 
 void playCC(byte m, byte n) {
   byte v = n & 0x0F; // GB CC value 0-15
-  n = (n >> 4) & 0x07; // GB CC number 0-6
+  n = (n>>4) & 0x07; // GB CC number 0-6
   switch (n) {
     case VELOCITY_CC: // Set velocity 1-127
       if (v == 0) {
         velocity[m] = 1;
       }
       else {
-        velocity[m] = v * 8 + (v >> 1);
+        velocity[m] = v*8 + (v>>1);
       }
       break;
     case TEMPO_CC: // Set clock interval using CC value or tap tempo
+      if (v == 0) {
+        Timer1.stop();
+        clockOn = false;
+        return;
+      }
+
       now = micros();
       if (now - lastTapTime < minTapInterval) {
         return;
       }
 
       if (now - lastTapTime > maxTapInterval) {
-        Timer1.setPeriod(clockIntervalMicros(MIN_BPM + v * 8));
+        Timer1.setPeriod(clockIntervalMicros(MIN_BPM + v*8));
         firstTapTime = now;
         timesTapped = 1;
       }
@@ -188,6 +205,11 @@ void playCC(byte m, byte n) {
         timesTapped++;
       }
       lastTapTime = now;
+
+      if (!clockOn) {
+        Timer1.start();
+        clockOn = true;
+      }
       break;
     case CHORD_CC: // Set chord with 1-15, 0 => chord off
       chord[m] = v - 1;
@@ -196,7 +218,7 @@ void playCC(byte m, byte n) {
       midiChannels[m] = v + 1;
       break;
     default: // Send CC
-      MIDI.sendControlChange(midiCcNumbers[n], v * 8 + (v >> 1), midiChannels[m]);
+      MIDI.sendControlChange(midiCcNumbers[n], v*8 + (v>>1), midiChannels[m]);
       break;
   }
 }
@@ -206,7 +228,7 @@ void playPC(byte m, byte n) {
 }
 
 void stopAllNotes() {
-  for(int m=0; m < 4; m++) {
+  for(int m=0; m<4; m++) {
     if(midiOutLastNote[m] >= 0) {
       stopNote(m);
     }
@@ -219,7 +241,7 @@ long clockIntervalMicros(int bpm) {
 }
 
 void sendClockPulse() {
-  MIDI.sendRealTime(midi::Clock);
+  sendClock = 1;
 }
 
 boolean getIncomingSlaveByte() {
