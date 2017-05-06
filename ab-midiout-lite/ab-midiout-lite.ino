@@ -10,15 +10,45 @@
  *   (at your option) any later version.                                   *
  *                                                                         *
  ***************************************************************************/
-#include <MIDI.h>
 #include <TimerOne.h>
+
+/***************************************************************************
+* Teensy 3.2, Teensy 3.0, Teensy LC
+*
+* Notes on Teensy: Pins are not the same as in the schematic, the mapping is below.
+* Feel free to change, all related config in is this block.
+* Be sure to compile
+***************************************************************************/
+#if defined (__MK20DX256__) || defined (__MK20DX128__) || defined (__MKL26Z64__)
+#define USE_TEENSY 1
+#define PIN_GB_CLOCK 16
+#define PIN_GB_SERIALOUT 17
+#define PIN_MIDI_INPUT_POWER 4
+
+#if defined (__MKL26Z64__)
+#define GB_SET(bit_cl,bit_out,bit_in) GPIOB_PDOR = ((bit_in<<3) | (bit_out<<1) | bit_cl)
+#else
+#define GB_SET(bit_cl,bit_out,bit_in) GPIOB_PDOR = (GPIOB_PDIR & 0xfffffff4) | ((bit_in<<3) | (bit_out<<1) | bit_cl)
+#endif
+
+/***************************************************************************
+* Arudino Atmega 328 (assumed)
+***************************************************************************/
+#else
+#define GB_SET(bit_cl,bit_out,bit_in) PORTC = (PINC & B11111000) | ((bit_in<<2) | ((bit_out)<<1) | bit_cl)
+// ^ The reason for not using digitalWrite is to allign clock and data pins for the GB shift reg.
+
+#include <MIDI.h>
+
+#define PIN_GB_CLOCK 0
+#define PIN_GB_SERIALOUT 1
+#define PIN_MIDI_INPUT_POWER 4
+
+#endif
 
 #define BYTE_DELAY 80
 #define BIT_DELAY 2
 #define BIT_READ_DELAY 0
-#define PIN_GB_CLOCK 0
-#define PIN_GB_SERIALOUT 1
-#define PIN_MIDI_INPUT_POWER 4
 #define CLOCKS_PER_BEAT 24
 #define MIN_BPM 80
 #define MAX_BPM 200
@@ -263,4 +293,3 @@ boolean getIncomingSlaveByte() {
   }
   return false;
 }
-
