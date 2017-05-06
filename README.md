@@ -26,3 +26,4 @@ This is a custom MIDI out version of trash80's Arduinoboy software.
   * Arduino Uno Rev. 3.
   * LSDJ 4.7.3 and 4.8.8 (Arduinoboy versions).
   * 2 different Arduinoboy shields (by Lowtoy and Catskull). Any shield/design should work if it works with the original software.
+  * Catskull Electronics' Teensyboy (Teensy LC)
