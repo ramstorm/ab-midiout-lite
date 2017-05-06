@@ -61,7 +61,7 @@
 #define CHANNEL_CC 6
 
 
-MIDI_CREATE_DEFAULT_INSTANCE();
+//MIDI_CREATE_DEFAULT_INSTANCE();
 
 byte midiChannels[4] = {1, 2, 3, 4};
 byte midiCcNumbers[7] = {1, 2, 3, 7, 10, 11, 12};
@@ -115,7 +115,7 @@ void setup() {
   digitalWrite(PIN_GB_CLOCK, HIGH); // Gameboy wants a HIGH line
   digitalWrite(PIN_GB_SERIALOUT, LOW); // No data to send
 
-  MIDI.begin();
+//  MIDI.begin();
 
   // MIDI clock timer interrupt
   Timer1.initialize(clockIntervalMicros(bpm));
@@ -128,14 +128,16 @@ void loop() {
     if (incomingMidiByte > 0x6f) {
       switch (incomingMidiByte) {
         case 0x7E: //seq stop
-          MIDI.sendRealTime(midi::Stop);
+          usbMIDI.sendRealTime(B11111100);
+          //MIDI.sendRealTime(midi::Stop);
           stopAllNotes();
           break;
         case 0x7D: //seq start
           if (clockOn) {
             Timer1.restart();
           }
-          MIDI.sendRealTime(midi::Start);
+          usbMIDI.sendRealTime(B11111010);
+          //MIDI.sendRealTime(midi::Start);
           break;
         default:
           midiData = incomingMidiByte - 0x70;
@@ -149,7 +151,8 @@ void loop() {
     }
   }
   if (sendClock > 0) {
-    MIDI.sendRealTime(midi::Clock);
+    usbMIDI.sendRealTime(B11111000);
+    //MIDI.sendRealTime(midi::Clock);
     sendClock = 0;
   }
 }
@@ -180,11 +183,13 @@ void midioutDoAction(byte m, byte v) {
 void stopNote(byte m) {
   if (chord[m] >= 0) {
     for (chordIx = 1; chordIx <= chords[chord[m]][0]; chordIx++) {
-      MIDI.sendNoteOff(midiOutLastNote[m] + chords[chord[m]][chordIx], 100, midiChannels[m]);
+      usbMIDI.sendNoteOff(midiOutLastNote[m] + chords[chord[m]][chordIx], 100, midiChannels[m]);
+      //MIDI.sendNoteOff(midiOutLastNote[m] + chords[chord[m]][chordIx], 100, midiChannels[m]);
     }
   }
   else {
-    MIDI.sendNoteOff(midiOutLastNote[m], 100, midiChannels[m]);
+    usbMIDI.sendNoteOff(midiOutLastNote[m], 100, midiChannels[m]);
+    //MIDI.sendNoteOff(midiOutLastNote[m], 100, midiChannels[m]);
   }
   midiOutLastNote[m] = -1;
 }
@@ -192,11 +197,13 @@ void stopNote(byte m) {
 void playNote(byte m, byte n) {
   if (chord[m] >= 0) {
     for (chordIx = 1; chordIx <= chords[chord[m]][0]; chordIx++) {
-      MIDI.sendNoteOn(n + chords[chord[m]][chordIx], velocity[m], midiChannels[m]);
+      usbMIDI.sendNoteOn(n + chords[chord[m]][chordIx], velocity[m], midiChannels[m]);
+      //MIDI.sendNoteOn(n + chords[chord[m]][chordIx], velocity[m], midiChannels[m]);
     }
   }
   else {
-    MIDI.sendNoteOn(n, velocity[m], midiChannels[m]);
+    usbMIDI.sendNoteOn(n, velocity[m], midiChannels[m]);
+    //MIDI.sendNoteOn(n, velocity[m], midiChannels[m]);
   }
   midiOutLastNote[m] = n;
 }
@@ -248,13 +255,15 @@ void playCC(byte m, byte n) {
       midiChannels[m] = v + 1;
       break;
     default: // Send CC
-      MIDI.sendControlChange(midiCcNumbers[n], v*8 + (v>>1), midiChannels[m]);
+      usbMIDI.sendControlChange(midiCcNumbers[n], v*8 + (v>>1), midiChannels[m]);
+      //MIDI.sendControlChange(midiCcNumbers[n], v*8 + (v>>1), midiChannels[m]);
       break;
   }
 }
 
 void playPC(byte m, byte n) {
-  MIDI.sendProgramChange(n, midiChannels[m]);
+  usbMIDI.sendProgramChange(n, midiChannels[m]);
+  //MIDI.sendProgramChange(n, midiChannels[m]);
 }
 
 void stopAllNotes() {
@@ -262,7 +271,8 @@ void stopAllNotes() {
     if(midiOutLastNote[m] >= 0) {
       stopNote(m);
     }
-    MIDI.sendControlChange(123, 0x7F, midiChannels[m]);
+    usbMIDI.sendControlChange(123, 0x7F, midiChannels[m]);
+    //MIDI.sendControlChange(123, 0x7F, midiChannels[m]);
   }
 }
 
