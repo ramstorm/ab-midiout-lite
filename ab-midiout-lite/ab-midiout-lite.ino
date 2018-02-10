@@ -15,10 +15,6 @@
 
 #define BYTE_DELAY 80
 #define BIT_DELAY 2
-#define BIT_READ_DELAY 0
-#define PIN_GB_CLOCK 0
-#define PIN_GB_SERIALOUT 1
-#define PIN_MIDI_INPUT_POWER 4
 #define CLOCKS_PER_BEAT 24
 #define MIN_BPM 80
 #define MAX_BPM 200
@@ -29,6 +25,41 @@
 #define TEMPO_CC 4
 #define CHORD_CC 5
 #define CHANNEL_CC 6
+
+#if defined (__MK20DX256__) || defined (__MK20DX128__) || defined (__MKL26Z64__)
+#define MIDI_INTERFACE 1
+
+#if defined (__MKL26Z64__)
+#define GB_CLOCK_1 GPIOB_PDOR = 1
+#define GB_CLOCK_0 GPIOB_PDOR = 0
+#else
+#define GB_CLOCK_1 GPIOB_PDOR = GPIOB_PDIR & 0xfffffff5
+#define GB_CLOCK_0 GPIOB_PDOR = GPIOB_PDIR & 0xfffffff4
+#endif
+
+int pinGBClock     = 16;    // Analog In 0 - clock out to gameboy
+int pinGBSerialOut = 17;    // Analog In 1 - serial data to gameboy
+int pinGBSerialIn  = 18;    // Analog In 2 - serial data from gameboy
+int pinMidiInputPower = 0;  // Not used!
+
+HardwareSerial *serial = &Serial1;
+
+/***************************************************************************
+* Arduino Atmega 328 (assumed)
+***************************************************************************/
+#else
+#define GB_CLOCK_1 PORTC = B00000001
+#define GB_CLOCK_0 PORTC = B00000000
+// ^ The reason for not using digitalWrite is to allign clock and data pins for the GB shift reg.
+
+int pinGBClock     = A0;    // Analog In 0 - clock out to gameboy
+int pinGBSerialOut = A1;    // Analog In 1 - serial data to gameboy
+int pinGBSerialIn  = A2;    // Analog In 2 - serial data from gameboy
+int pinMidiInputPower = 4;  // power pin for midi input opto-isolator
+
+HardwareSerial *serial = &Serial;
+
+#endif
 
 
 MIDI_CREATE_DEFAULT_INSTANCE();
@@ -77,13 +108,20 @@ byte incomingMidiByte;
 volatile byte sendClock = 0;
 
 void setup() {
-  DDRC  = B00000011; // Set analog in pins as inputs
-  PORTC = B00000001;
+  pinMode(pinGBSerialIn, INPUT);
+  pinMode(pinGBSerialOut, OUTPUT);
+  pinMode(pinGBClock, OUTPUT);
+  digitalWrite(pinGBSerialOut, LOW);
+  digitalWrite(pinGBClock, HIGH);
 
-  pinMode(PIN_MIDI_INPUT_POWER, OUTPUT);
-  digitalWrite(PIN_MIDI_INPUT_POWER, HIGH); // Turn on the optoisolator
-  digitalWrite(PIN_GB_CLOCK, HIGH); // Gameboy wants a HIGH line
-  digitalWrite(PIN_GB_SERIALOUT, LOW); // No data to send
+#ifndef MIDI_INTERFACE
+  pinMode(pinMidiInputPower, OUTPUT);
+  digitalWrite(pinMidiInputPower, LOW); // Turn off the optoisolator, MIDI in is not used
+#endif
+
+#ifdef MIDI_INTERFACE
+  usbMIDI.setHandleRealTimeSystem(NULL);
+#endif
 
   MIDI.begin();
 
@@ -99,6 +137,9 @@ void loop() {
       switch (incomingMidiByte) {
         case 0x7E: //seq stop
           MIDI.sendRealTime(midi::Stop);
+#ifdef MIDI_INTERFACE
+          usbMIDI.sendRealTime(midi::Stop);
+#endif
           stopAllNotes();
           break;
         case 0x7D: //seq start
@@ -106,6 +147,9 @@ void loop() {
             Timer1.restart();
           }
           MIDI.sendRealTime(midi::Start);
+#ifdef MIDI_INTERFACE
+          usbMIDI.sendRealTime(midi::Start);
+#endif
           break;
         default:
           midiData = incomingMidiByte - 0x70;
@@ -120,6 +164,9 @@ void loop() {
   }
   if (sendClock > 0) {
     MIDI.sendRealTime(midi::Clock);
+#ifdef MIDI_INTERFACE
+    usbMIDI.sendRealTime(midi::Clock);
+#endif
     sendClock = 0;
   }
 }
@@ -151,10 +198,16 @@ void stopNote(byte m) {
   if (chord[m] >= 0) {
     for (chordIx = 1; chordIx <= chords[chord[m]][0]; chordIx++) {
       MIDI.sendNoteOff(midiOutLastNote[m] + chords[chord[m]][chordIx], 100, midiChannels[m]);
+#ifdef MIDI_INTERFACE
+      usbMIDI.sendNoteOff(midiOutLastNote[m] + chords[chord[m]][chordIx], 100, midiChannels[m]);
+#endif
     }
   }
   else {
     MIDI.sendNoteOff(midiOutLastNote[m], 100, midiChannels[m]);
+#ifdef MIDI_INTERFACE
+    usbMIDI.sendNoteOff(midiOutLastNote[m], 100, midiChannels[m]);
+#endif
   }
   midiOutLastNote[m] = -1;
 }
@@ -163,10 +216,16 @@ void playNote(byte m, byte n) {
   if (chord[m] >= 0) {
     for (chordIx = 1; chordIx <= chords[chord[m]][0]; chordIx++) {
       MIDI.sendNoteOn(n + chords[chord[m]][chordIx], velocity[m], midiChannels[m]);
+#ifdef MIDI_INTERFACE
+      usbMIDI.sendNoteOn(n + chords[chord[m]][chordIx], velocity[m], midiChannels[m]);
+#endif
     }
   }
   else {
     MIDI.sendNoteOn(n, velocity[m], midiChannels[m]);
+#ifdef MIDI_INTERFACE
+    usbMIDI.sendNoteOn(n, velocity[m], midiChannels[m]);
+#endif
   }
   midiOutLastNote[m] = n;
 }
@@ -219,12 +278,18 @@ void playCC(byte m, byte n) {
       break;
     default: // Send CC
       MIDI.sendControlChange(midiCcNumbers[n], v*8 + (v>>1), midiChannels[m]);
+#ifdef MIDI_INTERFACE
+      usbMIDI.sendControlChange(midiCcNumbers[n], v*8 + (v>>1), midiChannels[m]);
+#endif
       break;
   }
 }
 
 void playPC(byte m, byte n) {
   MIDI.sendProgramChange(n, midiChannels[m]);
+#ifdef MIDI_INTERFACE
+  usbMIDI.sendProgramChange(n, midiChannels[m]);
+#endif
 }
 
 void stopAllNotes() {
@@ -233,6 +298,9 @@ void stopAllNotes() {
       stopNote(m);
     }
     MIDI.sendControlChange(123, 0x7F, midiChannels[m]);
+#ifdef MIDI_INTERFACE
+    usbMIDI.sendControlChange(123, 0x7F, midiChannels[m]);
+#endif
   }
 }
 
@@ -246,18 +314,17 @@ void sendClockPulse() {
 
 boolean getIncomingSlaveByte() {
   delayMicroseconds(BYTE_DELAY);
-  PORTC = B00000000; // Rightmost bit is clock line, 2nd bit is data to gb, 3rd is data from gb
+  GB_CLOCK_0;
   delayMicroseconds(BYTE_DELAY);
-  PORTC = B00000001;
+  GB_CLOCK_1;
   delayMicroseconds(BIT_DELAY);
-  if ((PINC & B00000100)) {
+  if (digitalRead(pinGBSerialIn)) {
     incomingMidiByte = 0;
     for (countClockPause = 0; countClockPause != 7; countClockPause++) {
-      PORTC = B00000000;
+      GB_CLOCK_0;
       delayMicroseconds(BIT_DELAY);
-      PORTC = B00000001;
-      delayMicroseconds(BIT_READ_DELAY);
-      incomingMidiByte = (incomingMidiByte << 1) + ((PINC & B00000100) >> 2);
+      GB_CLOCK_1;
+      incomingMidiByte = (incomingMidiByte << 1) + digitalRead(pinGBSerialIn);
     }
     return true;
   }
