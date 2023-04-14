@@ -65,7 +65,10 @@ HardwareSerial *serial = &Serial;
 MIDI_CREATE_DEFAULT_INSTANCE();
 
 byte midiChannels[4] = {1, 2, 3, 4};
-byte midiCcNumbers[7] = {1, 2, 3, 7, 10, 11, 12};
+byte midiCcNumbers[4][7] = { {18, 16, 20, 14, 51, 92, 22}, //pu1
+                             {1, 2, 3, 7, 10, 11, 12}, //pu2
+                             {78, 89, 86, 88, 100, 101, 111}, //wav
+                             {1, 2, 3, 7, 10, 11, 12} }; //noi
 int midiOutLastNote[4] = {-1, -1, -1, -1};
 int velocity[4] = {100, 100, 100, 100};
 boolean clockOn = false;
@@ -277,9 +280,9 @@ void playCC(byte m, byte n) {
       midiChannels[m] = v + 1;
       break;
     default: // Send CC
-      MIDI.sendControlChange(midiCcNumbers[n], v*8 + (v>>1), midiChannels[m]);
+      MIDI.sendControlChange(midiCcNumbers[m][n], v*8 + (v>>1), midiChannels[m]);
 #ifdef MIDI_INTERFACE
-      usbMIDI.sendControlChange(midiCcNumbers[n], v*8 + (v>>1), midiChannels[m]);
+      usbMIDI.sendControlChange(midiCcNumbers[m][n], v*8 + (v>>1), midiChannels[m]);
 #endif
       break;
   }
